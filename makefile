@@ -5,3 +5,4 @@ verify:
 	cd 4_detect_single_byte_xor && $(MAKE) && ./main
 	cd 5_repeating_key_xor && $(MAKE) && ./main
 	cd 6_break_repeated_key_xor && $(MAKE) && ./main
+	cd 7_aes_ecb && $(MAKE) && ./main

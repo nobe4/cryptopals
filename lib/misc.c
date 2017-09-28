@@ -145,3 +145,26 @@ int transposeByBlocks(const char* string, const int str_len, const int block_num
   return block_len;
 }
 
+
+/* removeCharFromString: Remove a defined char from a string
+ * Inspired by https://stackoverflow.com/a/9895318/2558252
+ * params:
+ * 		string:  the string to remove from
+ * 		theChar: the char to remove from the string
+ */
+void removeCharFromString(char* string, char theChar){
+	char *read_ptr = string,
+			 *write_ptr = string;
+
+	// Read the whole string
+	while(*read_ptr){
+		// Write the current char and increment the read pointer
+		*write_ptr = *read_ptr++;
+
+		// Only increment the write pointer if the current char is not theChar
+		write_ptr += (*write_ptr != theChar);
+	}
+
+	// Nicely end the string
+	*write_ptr = 0;
+}
