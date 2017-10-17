@@ -2,6 +2,7 @@
 #define AES_H
 
 void AES_ECB_decrypt(const char* input, const int input_length, const char* key, char **result);
+void AES_ECB_encrypt(const char* input, const int input_length, const char* key, char **result);
 
 // Static tables to speed up the AES computation.
 

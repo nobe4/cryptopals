@@ -102,6 +102,34 @@ static uint8_t multiply(uint8_t x, uint8_t y) {
 	return p;
 }
 
+/* mixColumns: Mix the columns, some heavy math here.
+ * The logic is to construct the new state, one column (represented as
+ * [a,b,c,d]) at a time.
+ * From https://en.wikipedia.org/wiki/Rijndael_MixColumns
+ */
+static void mixColumns(state_t state) {
+	int i;
+	uint8_t a, b, c, d;
+	for (i = 0; i < 4; ++i) {
+		a = state[i][0];
+		b = state[i][1];
+		c = state[i][2];
+		d = state[i][3];
+
+		// In a Gallois Field, the addition is a XOR operation.
+		// We're using the following factors:
+		// a = a * 2 + b * 3 + c * 1 + d * 1
+		// b = a * 1 + b * 2 + c * 3 + d * 1
+		// c = a * 1 + b * 1 + c * 2 + d * 3
+		// d = a * 3 + b * 1 + c * 1 + d * 2
+		// From https://en.wikipedia.org/wiki/Rijndael_MixColumns
+		state[i][0] = multiply(a, 0x02) ^ multiply(b, 0x03) ^ multiply(c, 0x01) ^ multiply(d, 0x01);
+		state[i][1] = multiply(a, 0x01) ^ multiply(b, 0x02) ^ multiply(c, 0x03) ^ multiply(d, 0x01);
+		state[i][2] = multiply(a, 0x01) ^ multiply(b, 0x01) ^ multiply(c, 0x02) ^ multiply(d, 0x03);
+		state[i][3] = multiply(a, 0x03) ^ multiply(b, 0x01) ^ multiply(c, 0x01) ^ multiply(d, 0x02);
+	}
+}
+
 /* invMixColumns: Inverse the column mixing, some heavy math here.
  * The logic is to construct the new state, one column (represented as
  * [a,b,c,d]) at a time.
@@ -130,6 +158,18 @@ static void invMixColumns(state_t state) {
 	}
 }
 
+/* subBytes: Replace each byte in the state by its corresponding value in the S-box.
+ * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#The_SubBytes_step
+ */
+static void subBytes(state_t state) {
+	int i,j;
+	for (i = 0; i < 4; ++i) {
+		for (j = 0; j < 4; ++j) {
+			state[j][i] = sbox[(unsigned char)state[j][i]];
+		}
+	}
+}
+
 /* invSubBytes: Replace each byte in the state by its corresponding value in the reversed
  * S-box.
  * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#The_SubBytes_step
@@ -141,6 +181,43 @@ static void invSubBytes(state_t state) {
 			state[j][i] = inv_sbox[(unsigned char)state[j][i]];
 		}
 	}
+}
+
+/* shiftRows: Shift the stat rows, like a staircase.
+ * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#The_ShiftRows_step
+ */
+static void shiftRows(state_t state) {
+	char temp;
+
+	// Row 0 doesn't change
+
+	// Row 1 rotate 1 column to the left.
+	// [1,2,3,4] => [2,3,4,1]
+	temp        = state[0][1];
+	state[0][1] = state[1][1];
+	state[1][1] = state[2][1];
+	state[2][1] = state[3][1];
+	state[3][1] = temp;
+
+	// Row 2 rotate 2 column to the left
+	// [1,2,3,4] => [3,4,1,2]
+	// switch 1 and 3
+	temp        = state[0][2];
+	state[0][2] = state[2][2];
+	state[2][2] = temp;
+	// switch 2 and 4
+	temp        = state[1][2];
+	state[1][2] = state[3][2];
+	state[3][2] = temp;
+
+	// Row 3 rotate 3 column to the left, it's the same as rotating 1 column to
+	// the right.
+	// [1,2,3,4] => [4,1,2,3]
+	temp        = state[3][3];
+	state[3][3] = state[2][3];
+	state[2][3] = state[1][3];
+	state[1][3] = state[0][3];
+	state[0][3] = temp;
 }
 
 /* invShiftRows: Inverse the shift step.
@@ -227,8 +304,55 @@ static void InvCipher(const char* input, const int input_length, const char* key
 	addRoundKey(*state, 0, expanded_key);
 }
 
-/* AES_ECB_decrypt: Entry point of the decryption flow. Will call the
- *  InvCipher function for every 16 bytes word in the input string.
+/* Cipher: Main function of the encryption, perform all the rounds (initial,
+ * middle and final rounds). This will work on a 16 bytes string and will be
+ * called for each 16 bytes words in the encrypted string.
+ * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#High-level_description_of_the_algorithm
+ * params:
+ *     input:        The current input to encrypt
+ *     input_length: The current input length
+ *     key:          The key to use to encrypt
+ *     result:       The result to fill with the encrypted string
+ */
+static void Cipher(const char* input, const int input_length, const char* key, char *result) {
+	int round = 0;
+
+	// Current state of the encryption/decryption flow
+	static state_t* state;
+
+	// The expanded key, look the article for size explanation, it's the `b`
+	// variable in the article.
+	// From https://en.wikipedia.org/wiki/Rijndael_key_schedule#Constants
+	char expanded_key[176];
+
+	// Dupplicate the input into the result buffer
+	memcpy(result, input, input_length);
+
+	// The initial state is the first 16 bytes of the result array.
+	state = (state_t*)result;
+
+	keyExpansion(key, expanded_key);
+
+	// Add the first expanded key to the state.
+	addRoundKey(*state, 0, expanded_key);
+
+	// Looping backward to undo all the decrypting. Will be looping ROUNDS_NUMBER
+	// time.
+	for (round = 1; round < ROUNDS_NUMBER; ++round) {
+		subBytes(*state);
+		shiftRows(*state);
+		mixColumns(*state);
+		addRoundKey(*state, round, expanded_key);
+	}
+
+	// Perform the last round
+		subBytes(*state);
+		shiftRows(*state);
+		addRoundKey(*state, ROUNDS_NUMBER, expanded_key);
+}
+
+/* AES_ECB_decrypt: Entry point of the Decryption flow. Will call the
+ * InvCipher function for every 16-bytes words in the input string.
  * params:
  *     input:        The current input to decrypt
  *     input_length: The current input length
@@ -244,5 +368,25 @@ void AES_ECB_decrypt(const char* input, const int input_length, const char* key,
 	// Decrypt word by word
 	for(i = 0; i < input_length/16; ++i) {
 		InvCipher(input + (i*16), 16, key, (*result)+(i*16));
+	}
+}
+
+/* AES_ECB_encrypt: Entry point of the encryption flow. Will call the Cipher
+ * function for every 16-bytes words in the input string.
+ * params:
+ *     input:        The current input to decrypt
+ *     input_length: The current input length
+ *     key:          The key to use to decrypt
+ *     result:       The result to fill with the decrypted string
+ */
+void AES_ECB_encrypt(const char* input, const int input_length, const char* key, char **result) {
+	int i;
+
+	// Allocate the result buffer
+	(*result) = (char*)malloc(input_length);
+
+	// Decrypt word by word
+	for(i = 0; i < input_length/16; ++i) {
+		Cipher(input + (i*16), 16, key, (*result)+(i*16));
 	}
 }
