@@ -1,6 +1,9 @@
 #ifndef AES_H
 #define AES_H
 
+void AES_CBC_decrypt(const char* input, const int input_length, const char* key, const char *iv, char **result);
+void AES_CBC_encrypt(const char* input, const int input_length, const char* key, const char *iv, char **result);
+
 void AES_ECB_decrypt(const char* input, const int input_length, const char* key, char **result);
 void AES_ECB_encrypt(const char* input, const int input_length, const char* key, char **result);
 

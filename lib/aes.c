@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+
 #include "aes.h"
 
 // Constants for AES ECB 128
@@ -257,7 +258,20 @@ static void invShiftRows(state_t state) {
 	state[3][3] = temp;
 }
 
-/* InvCipher: Main function of the inversion, perform all the rounds (initial,
+/* xorIV: Simple XOR function to modify the 16 char buffer inline.
+ * params:
+ *     buffer: Buffer to modify
+ *     iv:     Vector to xor
+ */
+static void xorIV(char *buffer, const char *iv){
+	int x;
+	for(x = 0; x < 16; ++x){
+		// buffer is modified, no need to return it.
+		buffer[x] ^= iv[x];
+	}
+}
+
+/* invCipher: Main function of the inversion, perform all the rounds (initial,
  * middle and final rounds). This will work on a 16 bytes string and will be
  * called for each 16 bytes words in the encrypted string.
  * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#High-level_description_of_the_algorithm
@@ -267,7 +281,7 @@ static void invShiftRows(state_t state) {
  *     key:          The key to use to decrypt
  *     result:       The result to fill with the decrypted string
  */
-static void InvCipher(const char* input, const int input_length, const char* key, char *result) {
+static void invCipher(const char* input, const int input_length, const char* key, char *result) {
 	int round = 0;
 
 	// Current state of the encryption/decryption flow
@@ -278,7 +292,7 @@ static void InvCipher(const char* input, const int input_length, const char* key
 	// From https://en.wikipedia.org/wiki/Rijndael_key_schedule#Constants
 	char expanded_key[176];
 
-	// Dupplicate the input into the result buffer
+	// Duplicate the input into the result buffer
 	memcpy(result, input, input_length);
 
 	// The initial state is the first 16 bytes of the result array.
@@ -304,7 +318,7 @@ static void InvCipher(const char* input, const int input_length, const char* key
 	addRoundKey(*state, 0, expanded_key);
 }
 
-/* Cipher: Main function of the encryption, perform all the rounds (initial,
+/* cipher: Main function of the encryption, perform all the rounds (initial,
  * middle and final rounds). This will work on a 16 bytes string and will be
  * called for each 16 bytes words in the encrypted string.
  * From https://en.wikipedia.org/wiki/Advanced_Encryption_Standard#High-level_description_of_the_algorithm
@@ -314,7 +328,7 @@ static void InvCipher(const char* input, const int input_length, const char* key
  *     key:          The key to use to encrypt
  *     result:       The result to fill with the encrypted string
  */
-static void Cipher(const char* input, const int input_length, const char* key, char *result) {
+static void cipher(const char* input, const int input_length, const char* key, char *result) {
 	int round = 0;
 
 	// Current state of the encryption/decryption flow
@@ -346,13 +360,80 @@ static void Cipher(const char* input, const int input_length, const char* key, c
 	}
 
 	// Perform the last round
-		subBytes(*state);
-		shiftRows(*state);
-		addRoundKey(*state, ROUNDS_NUMBER, expanded_key);
+	subBytes(*state);
+	shiftRows(*state);
+	addRoundKey(*state, ROUNDS_NUMBER, expanded_key);
 }
 
-/* AES_ECB_decrypt: Entry point of the Decryption flow. Will call the
- * InvCipher function for every 16-bytes words in the input string.
+/* AES_CBC_decrypt: Entry point of the decryption flow in CBC mode. Will call
+ * the invCipher function for every 16-bytes words in the input string.
+ * params:
+ *     input:        The current input to decrypt
+ *     input_length: The current input length
+ *     key:          The key to use to decrypt
+ *     iv:           The initialisation vector to use to decrypt
+ *     result:       The result to fill with the decrypted string
+ */
+void AES_CBC_decrypt(const char* input, const int input_length, const char* key, const char *iv, char **result){
+	int i;
+
+	// Duplicate the IV to allow changes during the flow.
+	char current_iv[16];
+	memcpy(current_iv, iv, 16);
+
+	// Allocate the result buffer
+	(*result) = (char*)malloc(input_length);
+
+	// Decrypt word by word
+	for(i = 0; i < input_length/16; ++i) {
+		invCipher(input + (i*16), 16, key, (*result)+(i*16));
+
+		// XOR the output against the IV
+		xorIV((*result)+(i*16), current_iv);
+
+		// The new IV is the current input string
+		memcpy(current_iv, input+(i*16), 16);
+	}
+}
+
+/* AES_ECB_encrypt: Entry point of the encryption flow in CBC mode. Will call
+ * the cipher function for every 16-bytes words in the input string.
+ * params:
+ *     input:        The current input to encrypt
+ *     input_length: The current input length
+ *     key:          The key to use to encrypt
+ *     iv:           The initialisation vector to use to encrypt
+ *     result:       The result to fill with the encrypted string
+ */
+void AES_CBC_encrypt(const char* input, const int input_length, const char* key, const char *iv, char **result){
+	int i;
+
+	// Duplicate the current input bytes to allow changes.
+	char current_input[16];
+
+	// Duplicate the IV to allow changes during the flow.
+	char current_iv[16];
+	memcpy(current_iv, iv, 16);
+
+	// Allocate the result buffer
+	(*result) = (char*)malloc(input_length);
+
+	// Decrypt word by word
+	for(i = 0; i < input_length/16; ++i) {
+		// Copy the current input bytes and xor them against the current IV.
+		memcpy(current_input, input, 16);
+		xorIV(current_input, current_iv);
+
+		// Apply the cipher
+		cipher(current_input, 16, key, (*result)+(i*16));
+		
+		// The new IV is the string just computed.
+		memcpy(current_iv, (*result)+(i*16), 16);
+	}
+}
+
+/* AES_ECB_decrypt: Entry point of the Decryption flow in ECB mode. Will call
+ * the invCipher function for every 16-bytes words in the input string.
  * params:
  *     input:        The current input to decrypt
  *     input_length: The current input length
@@ -367,17 +448,17 @@ void AES_ECB_decrypt(const char* input, const int input_length, const char* key,
 
 	// Decrypt word by word
 	for(i = 0; i < input_length/16; ++i) {
-		InvCipher(input + (i*16), 16, key, (*result)+(i*16));
+		invCipher(input + (i*16), 16, key, (*result)+(i*16));
 	}
 }
 
-/* AES_ECB_encrypt: Entry point of the encryption flow. Will call the Cipher
- * function for every 16-bytes words in the input string.
+/* AES_ECB_encrypt: Entry point of the encryption flow in ECB mode. Will call
+ * the cipher function for every 16-bytes words in the input string.
  * params:
- *     input:        The current input to decrypt
+ *     input:        The current input to encrypt
  *     input_length: The current input length
- *     key:          The key to use to decrypt
- *     result:       The result to fill with the decrypted string
+ *     key:          The key to use to encrypt
+ *     result:       The result to fill with the encrypted string
  */
 void AES_ECB_encrypt(const char* input, const int input_length, const char* key, char **result) {
 	int i;
@@ -387,6 +468,6 @@ void AES_ECB_encrypt(const char* input, const int input_length, const char* key,
 
 	// Decrypt word by word
 	for(i = 0; i < input_length/16; ++i) {
-		Cipher(input + (i*16), 16, key, (*result)+(i*16));
+		cipher(input + (i*16), 16, key, (*result)+(i*16));
 	}
 }

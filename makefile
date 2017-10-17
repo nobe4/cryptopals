@@ -8,3 +8,4 @@ verify:
 	cd 7_aes_ecb && $(MAKE) && ./main
 	cd 8_detect_aes_ecb/ && $(MAKE) && ./main
 	cd 9_pkcs7_padding/ && $(MAKE) && ./main
+	cd 10_aes_cbc/ && $(MAKE) && ./main
