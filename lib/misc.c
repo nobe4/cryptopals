@@ -168,3 +168,38 @@ void removeCharFromString(char* string, char theChar){
 	// Nicely end the string
 	*write_ptr = 0;
 }
+
+/* surroundString: This adds a prefix and a suffix to the string, creating a new string.
+ * params:
+ *     original: The original string, to surround.
+ *     org_len:  The original string's length.
+ *     prefix:   The prefix string.
+ *     pre_len:  The prefix string's length.
+ *     suffix:   The suffix string.
+ *     suf_len:  The suffix string's length.
+ *     result:   The result buffer to allocate and fill.
+ */
+void surroundString(const char *original, const int org_len, const char *prefix, const int pre_len, const char *suffix, const int suf_len, char **result){
+	(*result) = (char*)malloc(pre_len + org_len + suf_len + 1);
+
+	memcpy((*result),                     prefix,   pre_len);
+	memcpy((*result) + pre_len,           original, org_len);
+	memcpy((*result) + pre_len + org_len, suffix,   suf_len);
+}
+
+/* repeatString: Repeat a string.
+ * params:
+ *     input:  The string to repeat.
+ *     in_len: Input string's length.
+ *     repeat: Number of time to repeat.
+ *     result: Result buffer to fill.
+ */
+void repeatString(const char *input, const int in_len, const int repeat, char **result){
+	int i,
+			result_len = in_len * repeat + 1;
+	(*result) = (char *)malloc(result_len);
+	for(i = 0; i < repeat; ++i){
+		memcpy((*result) + (i * in_len), input, in_len);
+	}
+	(*result)[result_len] = 0;
+}

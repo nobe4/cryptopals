@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "aes.h"
+#include "random.h"
 
 // Constants for AES ECB 128
 #define COLUMNS_NUMBER 4				// Number of columns
@@ -470,4 +471,12 @@ void AES_ECB_encrypt(const char* input, const int input_length, const char* key,
 	for(i = 0; i < input_length/16; ++i) {
 		cipher(input + (i*16), 16, key, (*result)+(i*16));
 	}
+}
+
+/* randomAESVector: Generate a random AES vector, which is simply a 16 bytes string.
+ * params:
+ *     key: The resulting key generated.
+ */
+void randomAESVector(char **key){
+	randomBytes(16, key);
 }

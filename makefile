@@ -9,3 +9,4 @@ verify:
 	cd 8_detect_aes_ecb/ && $(MAKE) && ./main
 	cd 9_pkcs7_padding/ && $(MAKE) && ./main
 	cd 10_aes_cbc/ && $(MAKE) && ./main
+	cd 11_ecb_cbc_detection_oracle/ && $(MAKE) && ./main
